@@ -27,57 +27,59 @@ app.get('/', (req, res) => {
     `);
 });
 
-// Fängt ALLES ab (Suchanfragen, Bilder, Scripte wie /search oder /images)
 app.use(async (req, res) => {
     let targetUrl = req.url;
 
-    // Falls die Anfrage über das Eingabefeld kommt (/go?url=...)
     if (req.path === '/go' && req.query.url) {
-        let url = req.query.url;
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        // WICHTIG: Hier decodieren wir die URL, damit %3A%2F%2F wieder zu :// wird
+        let url = decodeURIComponent(req.query.url);
+        
+        if (url.startsWith('//')) {
+            url = 'https:' + url;
+        } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
             url = 'https://' + url;
         }
         
         try {
             const parsed = new URL(url);
-            // Wir merken uns die Hauptseite in einem Cookie
             res.cookie('proxy_target', parsed.origin, { httpOnly: true, sameSite: 'lax' });
             targetUrl = url;
         } catch (e) {
-            return res.status(400).send("Ungültige URL");
+            return res.status(400).send("Ungültige URL: " + url);
         }
     } else {
-        // Falls eine Unterseite aufgerufen wird (z.B. /search), holen wir uns die Domain aus dem Cookie
         const cookies = req.headers.cookie ? Object.fromEntries(req.headers.cookie.split('; ').map(c => c.split('='))) : {};
-        const base = cookies['proxy_target'];
+        let base = cookies['proxy_target'];
         
         if (!base) {
-            // Wenn kein Cookie da ist, schicken wir den User zurück zur Startseite
             return res.redirect('/');
         }
+        
+        // Auch die im Cookie gespeicherte Basis-URL wird zur Sicherheit decodiert
+        base = decodeURIComponent(base);
         targetUrl = base + req.url;
     }
 
-    // Seite abrufen und an den Browser ausliefern
     try {
         const response = await fetch(targetUrl, {
-            headers: { 'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0' }
+            headers: { 
+                'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+                'Accept-Language': req.headers['accept-language'] || 'de-DE,de;q=0.9'
+            }
         });
         
         const contentType = response.headers.get('content-type') || '';
         
-        // Wenn es sich um eine Text/HTML-Seite handelt, liefern wir sie aus
         if (contentType.includes('text/html')) {
             const body = await response.text();
             res.send(body);
         } else {
-            // Bilder, CSS und andere Medien direkt unverändert weiterleiten
             const buffer = await response.arrayBuffer();
             res.set('Content-Type', contentType);
             res.send(Buffer.from(buffer));
         }
     } catch (err) {
-        res.status(500).send("Proxy-Fehler beim Laden von von von " + targetUrl + ": " + err.message);
+        res.status(500).send("Proxy-Fehler beim Laden von " + targetUrl + ": " + err.message);
     }
 });
 
