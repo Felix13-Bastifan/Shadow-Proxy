@@ -31,8 +31,12 @@ app.use(async (req, res) => {
     let targetUrl = req.url;
 
     if (req.path === '/go' && req.query.url) {
-        // WICHTIG: Hier decodieren wir die URL, damit %3A%2F%2F wieder zu :// wird
         let url = decodeURIComponent(req.query.url);
+        
+        // Falls die URL mehrfach codiert wurde, so lange decodieren bis sie sauber ist
+        while (url.includes('%3A') || url.includes('%2F')) {
+            url = decodeURIComponent(url);
+        }
         
         if (url.startsWith('//')) {
             url = 'https:' + url;
@@ -55,15 +59,24 @@ app.use(async (req, res) => {
             return res.redirect('/');
         }
         
-        // Auch die im Cookie gespeicherte Basis-URL wird zur Sicherheit decodiert
         base = decodeURIComponent(base);
+        while (base.includes('%3A') || base.includes('%2F')) {
+            base = decodeURIComponent(base);
+        }
+        
         targetUrl = base + req.url;
+    }
+
+    // WICHTIG: Auch die finale zusammengesetzte URL wird hier komplett glattgezogen
+    targetUrl = decodeURIComponent(targetUrl);
+    while (targetUrl.includes('%3A') || targetUrl.includes('%2F')) {
+        targetUrl = decodeURIComponent(targetUrl);
     }
 
     try {
         const response = await fetch(targetUrl, {
             headers: { 
-                'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Accept-Language': req.headers['accept-language'] || 'de-DE,de;q=0.9'
             }
         });
