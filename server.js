@@ -17,14 +17,46 @@ app.get('/', (req, res) => {
         </head>
         <body>
             <h1>📱 Mein Web Proxy</h1>
-            <p>Gib eine URL ein (z.B. https://example.com):</p>
+            <p>Gib eine URL ein (z.B. https://google.de):</p>
             <form action="/go" method="get">
-                <input type="text" name="url" placeholder="https://example.com" required>
+                <input type="text" name="url" placeholder="https://google.de" required>
                 <button type="submit">Los</button>
             </form>
         </body>
         </html>
     `);
+});
+
+// Fängt alle Unterseiten und Suchanfragen ab (z.B. /search)
+app.use(async (req, res) => {
+    // Wenn die Anfrage von Google oder einer anderen Seite kommt, leiten wir sie weiter
+    const referer = req.headers.referer;
+    let targetBase = "";
+
+    if (referer && referer.includes('/go')) {
+        const urlParams = new URLSearchParams(referer.split('?')[1]);
+        const originalUrl = urlParams.get('url');
+        if (originalUrl) {
+            const parsed = new URL(originalUrl.startsWith('http') ? originalUrl : 'https://' + originalUrl);
+            targetBase = parsed.origin;
+        }
+    }
+
+    if (!targetBase) {
+        return res.status(404).send("Bitte starte deine Suche direkt über die Hauptseite des Proxys.");
+    }
+
+    const targetUrl = targetBase + req.url;
+
+    try {
+        const response = await fetch(targetUrl, {
+            headers: { 'User-Agent': req.headers['user-agent'] }
+        });
+        const body = await response.text();
+        res.send(body);
+    } catch (err) {
+        res.status(500).send("Proxy-Fehler beim Weiterleiten: " + err.message);
+    }
 });
 
 app.get('/go', async (req, res) => {
@@ -33,8 +65,10 @@ app.get('/go', async (req, res) => {
         target = 'https://' + target;
     }
     try {
-        const response = await fetch(target);
-        const body = await response.text();
+        const response = await fetch(target, {
+            headers: { 'User-Agent': req.headers['user-agent'] }
+        });
+        let body = await response.text();
         res.send(body);
     } catch (err) {
         res.status(500).send("Proxy-Fehler: " + err.message);
